@@ -1,0 +1,121 @@
+---
+title: "A Classifier for Weight Lifting Exercises"
+output: html_document
+author: Ruitao Xie
+---
+
+I build a classification model for weight lifting exercises in 5 steps.
+
+**1. Read and clean data.**
+
+I remove the columns which contain half NAs. There are three reasons. First, the majority of data is missing in these columns so that they are not suited as predictors. Second, the data of these columns is neither unavailable in the testing data set, so I think they may not contribute for the prediction.
+Third, I remove the columns which contain half NAs instead of any NA, because it is possible that some sensor readings may be missed due to some failures during data collection, however, it would not affect modeling and prediction if the amount of missed data is small.
+
+```{r, message=FALSE}
+library(caret)
+
+# read data
+data.raw <- read.csv('pml-training.csv', sep=',', na.strings= c("#DIV/0!", "NA", " ", ""))
+
+# remove the columns which have half NAs
+numrows = dim(data.raw)[1]
+halfnumrows = numrows/2
+is.half.na <- function(x){
+    return (sum(is.na(x)) > halfnumrows)
+}
+col.half.na <- which( apply(data.raw, 2, is.half.na))
+data.no.na <- data.raw[, -col.half.na]
+
+# use sensor readings and classe as training data
+data.cleaned <- data.no.na[, 8:dim(data.no.na)[2]]
+```
+
+The cleaned data contains following columns, from which "classe" is outcome and the other columns will be used as predictors. 
+
+```{r, echo=FALSE}
+names(data.cleaned)
+```
+
+**2. Create training data set and validation data set.**
+
+I split the cleaned data into training data set and validation data set. The former is 70%, and the latter is 30%. As such, I can expect the prediction accuracy more confidently.
+
+
+```{r}
+# split cleaned data into training set and validation set
+intrain <- createDataPartition(data.cleaned$classe, p=0.7,list=FALSE)
+data.training <- data.cleaned[intrain, ]
+data.validation <- data.cleaned[-intrain, ]
+```
+
+**3. Fit a Quadratic Discriminant Analysis model using training data.**
+
+I choose the Quadratic Discriminant Analysis model, because I found that the majority of sensing data is continuously distributed, and each sensing data in each class is distributed very similar to Gaussian distribution. For example, the following figures show the histograms of accel_forearm_x in each class. It is shown that different classes have different means and standard deviations, based on which they can be recognized. QDA is a practical model-based prediction, so I choose it to build my model.
+
+```{r}
+# plot the histograms of accel_forearm_x in each class
+class <- c('A', 'B', 'C', 'D', 'E')
+colors <- c('red', 'blue', 'green', 'yellow', 'cyan', 'orange')
+m <- matrix(c(1,4,2,6,3,5), nrow = 2, ncol = 3)
+layout(m)
+xmat <- matrix(nrow=5, ncol=400)
+ymat <- matrix(nrow=5, ncol=400)
+for (i in 1:5){
+    h <- hist(data.cleaned$accel_forearm_x[data.cleaned$classe==class[i]], plot=FALSE)    
+    plot(h, xlab=paste("accel_forearm_x in class", class[i]), 
+         main=paste("class", class[i]))
+    x=data.cleaned$accel_forearm_x[data.cleaned$classe==class[i]]
+    xmat[i,] <- seq(min(x),max(x),length=400) 
+    ymat[i,] <- dnorm(xmat[i,],mean=mean(x),sd=sd(x))
+    ymat[i,] <- ymat[i,]*diff(h$mids[1:2])*length(x)
+    lines(xmat[i,], ymat[i,], col=colors[i], lwd=4)
+}
+title("Histogram of accel_forearm_x", outer = TRUE, line = -1)
+```
+
+```{r}
+# plot expected distribution of accel_forearm_x in each class
+dd <- data.frame(as.vector(t(xmat)), as.vector(t(ymat)), rep(c('A','B','C','D','E'), each = 400) )
+names(dd) <- c("x","y","classe")
+ggplot(dd) + geom_line(aes(x=x, y=y, colour=classe)) +
+    scale_colour_manual(values=colors[1:5]) +
+    xlab("accel_forearm_x") + ylab("Frequency") +
+    ggtitle("expected distribution of accel_forearm_x in each class")
+```
+
+I use 10-fold cross validation to avoid over-fitting and repeat it for 20 times.
+
+```{r, message=FALSE}
+# fit a qda model using 10-fold cross validation, repeating 20 times 
+ctrl <- trainControl(method = "repeatedcv", 
+                     repeats = 20,
+                     number = 10)
+fit <- train(classe ~ ., data=data.training, 
+             method='qda',
+             preProcess=c("center","scale"),
+             trControl=ctrl)
+fit
+```
+
+**4. Predict with validation set and get the validation error.**
+
+In this step, the validation accuracy is obtained from the overall statistics. So the validation error can be calculated by *1 - validation accuracy*. With this validation error, I can expect that the expected out of sample error is around *0.1057*.
+
+```{r}
+# predict with validation set
+predres.validation <- predict(fit, data.validation)
+res <- confusionMatrix(data.validation$classe, predres.validation)
+res
+error <- 1 - res$overall[["Accuracy"]]
+cat("validation error is ", error, "\n")
+```
+
+**5. Predict with testing data set.**
+
+```{r}
+# predict with testing data set
+data.testing <- read.csv('pml-testing.csv', sep=',', na.strings= c("#DIV/0!", "NA", " ", ""))
+predres.testing <- predict(fit, data.testing)
+p <- paste(predres.testing, collapse=" ")
+cat("predicted results for 20 problems are: ", p)
+```
