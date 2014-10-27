@@ -58,28 +58,29 @@ class <- c('A', 'B', 'C', 'D', 'E')
 colors <- c('red', 'blue', 'green', 'yellow', 'cyan', 'orange')
 m <- matrix(c(1,4,2,6,3,5), nrow = 2, ncol = 3)
 layout(m)
-xmat <- matrix(nrow=5, ncol=400)
-ymat <- matrix(nrow=5, ncol=400)
+xmat <- matrix(nrow=400, ncol=5)
+ymat <- matrix(nrow=400, ncol=5)
+yfmat <- matrix(nrow=400, ncol=5)
 for (i in 1:5){
-    h <- hist(data.cleaned$accel_forearm_x[data.cleaned$classe==class[i]], plot=FALSE)    
-    plot(h, xlab=paste("accel_forearm_x in class", class[i]), 
-         main=paste("class", class[i]))
     x=data.cleaned$accel_forearm_x[data.cleaned$classe==class[i]]
-    xmat[i,] <- seq(min(x),max(x),length=400) 
-    ymat[i,] <- dnorm(xmat[i,],mean=mean(x),sd=sd(x))
-    ymat[i,] <- ymat[i,]*diff(h$mids[1:2])*length(x)
-    lines(xmat[i,], ymat[i,], col=colors[i], lwd=4)
+    h <- hist(x, plot=FALSE)    
+    plot(h, xlab=paste("accel_forearm_x in class", class[i]), 
+         main=paste("class", class[i]))    
+    xmat[, i] <- seq(min(x), max(x), length=400) 
+    ymat[, i] <- dnorm(xmat[, i], mean=mean(x), sd=sd(x))
+    yfmat[, i] <- ymat[, i] * diff(h$mids[1:2]) * length(x)
+    lines(xmat[, i], yfmat[, i], col=colors[i], lwd=4)
 }
 title("Histogram of accel_forearm_x", outer = TRUE, line = -1)
 ```
 
 ```{r}
 # plot expected distribution of accel_forearm_x in each class
-dd <- data.frame(as.vector(t(xmat)), as.vector(t(ymat)), rep(c('A','B','C','D','E'), each = 400) )
+dd <- data.frame(as.vector(xmat), as.vector(ymat), rep(c('A','B','C','D','E'), each = 400) )
 names(dd) <- c("x","y","classe")
 ggplot(dd) + geom_line(aes(x=x, y=y, colour=classe)) +
     scale_colour_manual(values=colors[1:5]) +
-    xlab("accel_forearm_x") + ylab("Frequency") +
+    xlab("accel_forearm_x") + ylab("probability density") +
     ggtitle("expected distribution of accel_forearm_x in each class")
 ```
 
@@ -116,6 +117,5 @@ cat("validation error is ", error, "\n")
 # predict with testing data set
 data.testing <- read.csv('pml-testing.csv', sep=',', na.strings= c("#DIV/0!", "NA", " ", ""))
 predres.testing <- predict(fit, data.testing)
-p <- paste(predres.testing, collapse=" ")
-cat("predicted results for 20 problems are: ", p)
+cat("predicted results for 20 problems are: ", paste(predres.testing, collapse=" "))
 ```
